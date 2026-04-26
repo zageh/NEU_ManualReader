@@ -21,6 +21,9 @@ class simp_tokenizer2:
     #把单词变为数字
     
     def decode(self,ids):
+        if hasattr(ids,'tolist'):
+            ids=ids.tolist()
+        
         text=" ".join(self.int_to_str[i] for i in ids)
         text= re.sub(r'\s+([,.?!"()\'])', r'\1', text)
         
@@ -33,7 +36,7 @@ with open(r"project1\src\data\the-verdict.txt", "r", encoding="utf-8") as f:
 preprocessed=re.split(r'([,.:;?_!"()\']|--|\s)', raw_text)
 preprocessed=[item.strip() for item in preprocessed if item.strip()]
 
-all_tokens=sorted(list(set(preprocessed)))
+all_tokens=sorted(list(set(preprocessed))) #sort为了确保每次同一单词都对应同一数字，不影响实际功能
 all_tokens.extend(["<|endoftext|>","<|unk|>"])
 vocab={s:i for i,s in enumerate(all_tokens)}
 
@@ -63,5 +66,6 @@ class gpt_dataset_v1(Dataset):
     
 dataset=gpt_dataset_v1(raw_text,tokenizer,max_len=128,stride=1)
 x,y=dataset[0]
+print(f"Total tokens in text: {len(tokenizer.encode(raw_text, add_endoftext=True))}") #少于tiktoken，但是主要是unk太暴力了
 print(f"x:{x} -> {tokenizer.decode(x)}")
 print(f"y:{y} -> {tokenizer.decode(y)}")
