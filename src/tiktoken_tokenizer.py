@@ -1,8 +1,7 @@
-import torch
-import torch.nn as nn
-from torch.utils.data import Dataset,DataLoader
-
 import tiktoken
+
+import torch
+from torch.utils.data import Dataset,DataLoader
 
 with open(r"project1\src\data\output.txt", "r", encoding="utf-8") as f:
     raw_text = f.read()
@@ -41,7 +40,7 @@ def create_dataloader_v1(txt,batch_size=4,max_len=256,stride=128,
     
     return dataloader
 
-dataloader=create_dataloader_v1(raw_text,batch_size=4,max_len=128,
+dataloader=create_dataloader_v1(raw_text,batch_size=8,max_len=128,
                                 stride=4,shuffle=False)
 
 data_iter=iter(dataloader)
@@ -50,41 +49,6 @@ inputs,targets=next(data_iter)
 vocab_size=50257
 embed_dim=768
 
-embedding_layer=nn.Embedding(vocab_size,embed_dim)
+embedding_layer=torch.nn.Embedding(vocab_size,embed_dim)
 
-class CausalAttention(nn.Module):
-    def __init__(self,d_in,d_out,context_len,dropout,qkv_bias=False):
-        super().__init__()
-        self.W_query=nn.Linear(d_in,d_out,bias=False)
-        self.W_key  =nn.Linear(d_in,d_out,bias=False)
-        self.W_value=nn.Linear(d_in,d_out,bias=False)
-        self.dropout=nn.Dropout(dropout)
-        #dropout 随机把weight改为0，提高鲁棒性
-        
-        self.register_buffer('mask',torch.tril(torch.ones(context_len,context_len)))
-        
-    def forward(self,x):
-        b,t,c=x.shape
-        
-        keys=self.W_key(x)
-        queries=self.W_query(x)
-        values=self.W_value(x)
-        
-        attn_scores=queries @ keys.transpose(1,2)
-        
-        attn_scores.masked_fill_(self.mask[:t,:t]==0 , -float('inf'))
-        #masked_fill_ 本地操作，节约显存
-        
-        attn_weights=torch.softmax(attn_scores/keys.shape[-1]**0.5, dim=-1)
-        #这里的sqrt（d_k)原自于 总体的标准差 sqrt(方差), 
-        #这个次数可以改，也就是scale或者temperature，
-        #可以有attn_scores @ learned_scale
-        
-        context_vec=attn_weights @ values
-        
-        return context_vec
-    
-ca=CausalAttention(768,768,128,0.1)
-output=ca(embedding_layer(inputs))
-
-print(output.shape)
+print(embedding_layer(inputs).shape)
