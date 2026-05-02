@@ -52,27 +52,44 @@ embed_dim=768
 
 embedding_layer=nn.Embedding(vocab_size,embed_dim)
 
-class CausalAttention(nn.Module):
-    def __init__(self,d_in,d_out,context_len,dropout,qkv_bias=False):
+class MultiHeadAttentionWrapper(nn.Module):
+    def __init__(self,d_in,d_out,context_len,dropout,num_heads,qkv_bias=False):
         super().__init__()
+        assert d_out % num_heads==0, "请修改num_heads"
+        
+        self.d_out=d_out
+        self.num_heads=num_heads
+        self.head_dim=d_out//num_heads
+        
         self.W_query=nn.Linear(d_in,d_out,bias=False)
         self.W_key  =nn.Linear(d_in,d_out,bias=False)
         self.W_value=nn.Linear(d_in,d_out,bias=False)
+        
+        self.out_proj=nn.Linear(d_out,d_out)
+        #最终线性层，融合多层信息
+        
         self.dropout=nn.Dropout(dropout)
         #dropout 随机把weight改为0，提高鲁棒性
         
         self.register_buffer('mask',torch.tril(torch.ones(context_len,context_len)))
         
     def forward(self,x):
-        b,t,c=x.shape
+        b,num_token,d_in=x.shape
         
         keys=self.W_key(x)
         queries=self.W_query(x)
         values=self.W_value(x)
         
-        attn_scores=queries @ keys.transpose(1,2)
+        keys=keys.view(b,num_token,self.num_heads,self.head_dim).transpose(1,2)
+        queries=queries.view(b,num_token,self.num_heads,self.head_dim).transpose(1,2)
+        values=values.view(b,num_token,self.num_heads,self.head_dim).transpose(1,2)
+        #d_out被拆分成了 head_dim 和 num_heads
+        #view的作用： 把d_out 维转为 num_heads*head_dim 维
         
-        attn_scores.masked_fill_(self.mask[:t,:t]==0 , -float('inf'))
+        attn_scores=queries @ keys.transpose(2,3)
+        
+        mask_bool=self.mask[:num_token,:num_token].bool()
+        attn_scores.masked_fill_(~mask_bool[:num_token,:num_token], -float('inf'))
         #masked_fill_ 本地操作，节约显存
         
         attn_weights=torch.softmax(attn_scores/keys.shape[-1]**0.5, dim=-1)
@@ -80,11 +97,15 @@ class CausalAttention(nn.Module):
         #这个次数可以改，也就是scale或者temperature，
         #可以有attn_scores @ learned_scale
         
-        context_vec=attn_weights @ values
+        context_vec=(attn_weights @ values).transpose(1,2)
         
+        context_vec= context_vec.contiguous().view(b,num_token,self.d_out)
+        
+        context_vec= self.out_proj(context_vec)
         return context_vec
     
-ca=CausalAttention(768,768,128,0.1)
-output=ca(embedding_layer(inputs))
+mha=MultiHeadAttentionWrapper(768,768,128,0.1,12)
+output=mha(embedding_layer(inputs))
 
 print(output.shape)
+print(sum(p.numel() for p in mha.parameters()))
