@@ -103,9 +103,12 @@ class MultiHeadAttentionWrapper(nn.Module):
         
         context_vec= self.out_proj(context_vec)
         return context_vec
-    
+
+ln=nn.LayerNorm(embed_dim)
+
+x=embedding_layer(inputs)
+x=ln(x)  
 mha=MultiHeadAttentionWrapper(768,768,128,0.1,12)
-output=mha(embedding_layer(inputs))
+output=mha(x)
 
 print(output.shape)
-print(sum(p.numel() for p in mha.parameters()))
