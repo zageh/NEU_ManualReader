@@ -104,11 +104,35 @@ class MultiHeadAttentionWrapper(nn.Module):
         context_vec= self.out_proj(context_vec)
         return context_vec
 
-ln=nn.LayerNorm(embed_dim)
+class GELU(nn.Module):
+    def forward(self, x):
+        return 0.5 * x * (1 +
+                          torch.tanh(torch.sqrt(torch.tensor(2.0 / torch.pi)))
+                          * (x + 0.044715 * torch.pow(x, 3)))
+        
+class FeedForward(nn.Module):
+    def __init__(self, d_in):
+        super().__init__()
+        self.layers = nn.Sequential(
+            nn.Linear(d_in, 4 * d_in),
+            GELU(),
+            nn.Linear(4 * d_in, d_in),
+        )
+        
+    def forward(self, x):
+        return self.layers(x)
+
+ln1=nn.LayerNorm(embed_dim)
+ln2=nn.LayerNorm(embed_dim)
+
+mha=MultiHeadAttentionWrapper(768,768,128,0.1,12)
+ffn=FeedForward(embed_dim)
 
 x=embedding_layer(inputs)
-x=ln(x)  
-mha=MultiHeadAttentionWrapper(768,768,128,0.1,12)
-output=mha(x)
+attn_out=mha(ln1(x))
+x=x+attn_out
 
-print(output.shape)
+ffn_out=ffn(ln2(x))
+x=x+ffn_out
+
+print(x.shape)
